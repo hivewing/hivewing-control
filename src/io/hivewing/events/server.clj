@@ -1,5 +1,5 @@
-(ns io.hivewing.events)
+(ns io.hivewing.events.server)
 
-(defn main
+(defn hello
   ([] "Hellow World")
   ([name] (str "Hello " name "!")))
