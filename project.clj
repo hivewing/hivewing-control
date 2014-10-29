@@ -3,7 +3,12 @@
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.6.0"]]
-  :main ^:skip-aot hivewing-events.core
+  :dependencies [
+                 [org.clojure/clojure "1.6.0"]
+                 [compojure "1.2.1"]
+                 ]
+  :plugins [[lein-ring "0.8.13"]]
+  :ring {:handler hivewing-events.server/app}
+  ;;:main ^:skip-aot hivewing-events.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
