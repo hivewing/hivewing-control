@@ -3,5 +3,5 @@
             [compojure.route :as route]))
 
 (defroutes app
-  (GET "/" [] "Hello World")
+  (GET "/" [] "Hivewing.io Events Server")
   (route/not-found "Not Found"))
