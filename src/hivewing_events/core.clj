@@ -4,5 +4,6 @@
 
  (defn -main
   [& args]
-  (println "Hello, World! Spinning up!")
-  (run-server app {:port 3003}))
+  (let [port 3003]
+    (println (str "Hello, World! Spinning up! port:" port))
+    (run-server app {:port port})))
