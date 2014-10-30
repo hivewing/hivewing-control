@@ -4,6 +4,7 @@
 *.swm
 /lib
 /target
+/classes
 
 .lein-deps-sum
 .lein-failures
