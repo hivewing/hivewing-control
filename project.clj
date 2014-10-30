@@ -1,6 +1,6 @@
-(defproject hivewing-events "0.1.0"
-  :description "Hivewing Events / Control server."
-  :url "http://events.hivewing.io"
+(defproject hivewing-control "0.1.0"
+  :description "Hivewing Control server."
+  :url "http://control.hivewing.io"
   :dependencies [
                  [org.clojure/clojure "1.6.0"]
                  [compojure "1.2.1"]
@@ -8,6 +8,6 @@
                  [ring/ring-json "0.3.1"]
                  [http-kit "2.0.0"]
                  ]
-  :main hivewing-events.core
+  :main hivewing-control.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
