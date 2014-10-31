@@ -1,6 +1,7 @@
 (ns hivewing-control.worker
   (:require [rotary.client :refer :all]
             [pantomime.mime :refer [mime-type-of]]
+            [alex-and-georges.debug-repl :refer :all]
             [hivewing-control.config  :refer [aws-credentials ddb-worker-table]]))
 
 (defn worker-ensure-tables []
@@ -8,7 +9,8 @@
 
 (defn worker-get-config
   [worker-guid]
-  (query aws-credentials ddb-worker-table {:key worker-guid}))
+  (debug-repl)
+  (:items (query aws-credentials ddb-worker-table {"guid" worker-guid})))
 
 (defn worker-set-config
   [worker-guid parameters]

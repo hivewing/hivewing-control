@@ -9,8 +9,10 @@
                  [http-kit "2.0.0"]
                  [rotary "0.4.1"]
                  [environ "1.0.0"]
+                 [org.clojars.gjahad/debug-repl "0.3.3"]
                  [com.novemberain/pantomime "2.3.0"]
                  ]
+  :plugins [[lein-environ "1.0.0"]]
   :main hivewing-control.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
