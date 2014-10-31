@@ -9,3 +9,5 @@
 .lein-deps-sum
 .lein-failures
 .lein*
+test/aws_local/ddb/data/*
+.nrepl-port
