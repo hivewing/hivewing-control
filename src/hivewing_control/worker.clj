@@ -9,23 +9,26 @@
 
 (defn worker-get-config
   [worker-guid]
-  (debug-repl)
-  (:items (query aws-credentials ddb-worker-table {"guid" worker-guid})))
+  (let [fields (:items (query aws-credentials ddb-worker-table {"guid" worker-guid}))
+        kv-pairs (map #(hash-map (get % "key") (select-keys % ["data" "_uat" "type"])) fields)
+        result   (reduce #(merge %1 %2) kv-pairs)
+        ]
+    result
+    ))
 
 (defn worker-set-config
   [worker-guid parameters]
   ; Want to split the parameters
   (doseq [kv-pair parameters]
     (let [upload-data {:guid worker-guid,
-               :key  (str (get kv-pair 0)),
-               :data (str (get kv-pair 1)),
-               :_uat (System/currentTimeMillis),
-               :type (str (mime-type-of (get kv-pair 1)))}]
+               "key"  (str (get kv-pair 0)),
+               "data" (str (get kv-pair 1)),
+               "_uat" (System/currentTimeMillis),
+               "type" (str (mime-type-of (get kv-pair 1)))}]
 
       ; If the data is > 1024 bytes, we need to upload it.
-      (if (> 1024 (count (:data upload-data)))
+      (if (> 1024 (count (get upload-data "data" )))
         ( ; Upload data should go to S3, and we put the url in there instead.
           ; the mime-type should be a blob
          ))
-      (println (str "Uploading " upload-data))
       (put-item aws-credentials ddb-worker-table upload-data))))
