@@ -9,6 +9,7 @@
                  [http-kit "2.0.0"]
                  [rotary "0.4.1"]
                  [environ "1.0.0"]
+                 [com.novemberain/pantomime "2.3.0"]
                  ]
   :main hivewing-control.core
   :target-path "target/%s"

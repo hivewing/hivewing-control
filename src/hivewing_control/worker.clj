@@ -1,5 +1,6 @@
 (ns hivewing-control.worker
   (:require [rotary.client :refer :all]
+            [pantomime.mime :refer [mime-type-of]]
             [hivewing-control.config  :refer [aws-credentials ddb-worker-table]]))
 
 (defn worker-ensure-tables []
@@ -13,5 +14,12 @@
   [worker-guid parameters]
   ; Want to split the parameters
   (doseq [kv-pair parameters]
-    (println kv-pair))
-  )
+    (println kv-pair)
+    ; TODO - If it's > 1k bytes in length (the 1 of kv-pair
+    ;        then we should store on S3
+    (put-item aws-credentials ddb-worker-table
+              {:guid worker-guid,
+               :key  (get kv-pair 0),
+               :data (get kv-pair 1),
+               :_uat (System/currentTimeMillis),
+               :type (mime-type-of (get kv-pair 1))})))
