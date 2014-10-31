@@ -14,12 +14,16 @@
   [worker-guid parameters]
   ; Want to split the parameters
   (doseq [kv-pair parameters]
-    (println kv-pair)
-    ; TODO - If it's > 1k bytes in length (the 1 of kv-pair
-    ;        then we should store on S3
-    (put-item aws-credentials ddb-worker-table
-              {:guid worker-guid,
-               :key  (get kv-pair 0),
-               :data (get kv-pair 1),
+    (let [upload-data {:guid worker-guid,
+               :key  (str (get kv-pair 0)),
+               :data (str (get kv-pair 1)),
                :_uat (System/currentTimeMillis),
-               :type (mime-type-of (get kv-pair 1))})))
+               :type (str (mime-type-of (get kv-pair 1)))}]
+
+      ; If the data is > 1024 bytes, we need to upload it.
+      (if (> 1024 (count (:data upload-data)))
+        ( ; Upload data should go to S3, and we put the url in there instead.
+          ; the mime-type should be a blob
+         ))
+      (println (str "Uploading " upload-data))
+      (put-item aws-credentials ddb-worker-table upload-data))))
