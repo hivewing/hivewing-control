@@ -4,7 +4,15 @@
             [org.httpkit.server :refer :all]
             [clojure.string :refer [split trim lower-case]]))
 
+
 ; https://gist.github.com/cgmartin/5880732
+;   Need to authenticate inside a "with-channel" macro
+;     worker-guid is in the URL, the Key should be matching the workers access-key
+;     make a request to SQL and find the info - verify it matches!
+;   Need to verify the subprotocol in there as well
+;     should match something handy like "hivewing-control.v1"
+
+
 (defn worker-control-handler [request]
   (with-channel request channel
     (on-close channel (fn [status] (println "channel closed: " status)))
