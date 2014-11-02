@@ -8,8 +8,8 @@
   [& args]
   (let [port 3003]
     (println (str "Hello, World! Spinning up! port:" port))
-    (worker-ensure-tables)
-    (worker-set-config "guid123" {"name" "bear bryant", "home" "alabama", "band" "needtobreathe"})
-    (println (worker-get-config "guid123"))
-    ;(run-server app {:port port}))
-    ))
+    ;(worker-ensure-tables)
+    ;(worker-set-config "guid123" {"name" "bear bryant", "home" "alabama", "band" "needtobreathe"})
+    ;(println (worker-get-config "guid123"))
+    (run-server app {:port port}))
+    )
