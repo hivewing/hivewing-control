@@ -4,7 +4,6 @@
             [org.httpkit.server :refer :all]
             [clojure.string :refer [split trim lower-case]]))
 
-
 ; https://gist.github.com/cgmartin/5880732
 ;   Need to authenticate inside a "with-channel" macro
 ;     worker-guid is in the URL, the Key should be matching the workers access-key
@@ -19,7 +18,7 @@
     (on-receive channel (fn [data] ;; echo it back
       (send! channel data)))))
 
-(defroutes app
+(defroutes app-routes
   (GET "/" [] "Hivewing.io Control Server")
   (GET "/:worker-guid" [] worker-control-handler)
   (route/not-found "Not Found"))
