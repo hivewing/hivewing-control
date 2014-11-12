@@ -6,7 +6,7 @@
 
 ; https://gist.github.com/cgmartin/5880732
 ;   Need to authenticate inside a "with-channel" macro
-;     worker-guid is in the URL, the Key should be matching the workers access-key
+;     worker-uuid is in the URL, the Key should be matching the workers access-key
 ;     make a request to SQL and find the info - verify it matches!
 ;   Need to verify the subprotocol in there as well
 ;     should match something handy like "hivewing-control.v1"
@@ -14,11 +14,12 @@
 
 (defn worker-control-handler [request]
   (with-channel request channel
+    (println (str "Connecting from device " (:worker-uuid (:params request))))
+    (println request)
     (on-close channel (fn [status] (println "channel closed: " status)))
     (on-receive channel (fn [data] ;; echo it back
       (send! channel data)))))
 
 (defroutes app-routes
-  (GET "/" [] "Hivewing.io Control Server")
-  (GET "/:worker-guid" [] worker-control-handler)
+  (GET "/" [] worker-control-handler)
   (route/not-found "Not Found"))
