@@ -14,7 +14,7 @@
 (defn binary?
   "Depending on the request parameters, we may send back JSON or MsgPack"
   [request]
-  (get-in request [:params :json]))
+  (not (get-in request [:params :json])))
 
 (defn create-update-message
   "You create the update message.  It is really just giving it the right fields"
@@ -55,7 +55,7 @@
   [worker-uuid [command data :as kv-pair]]
   (let [worker-config (core-worker-config/worker-config-get worker-uuid)]
     (case command
-      "update" {} ;(create-status-message (update-worker-config worker-uuid worker-config data)); Update the values, then reply with the status message
+      "update" (create-status-message (update-worker-config worker-uuid worker-config data)); Update the values, then reply with the status message
       "status" {}
       )))
 
