@@ -14,8 +14,8 @@
                  [ring-basic-authentication "1.0.5"]
                  [org.clojure/data.json "0.2.5"]
                  ]
-  :plugins [[s3-wagon-private "1.1.2"]]
-
+  :plugins [[s3-wagon-private "1.1.2"]
+            [lein-environ "1.0.0"]]
   :repositories [["hivewing-core" {:url "s3p://clojars.hivewing.io/hivewing-core/releases"
                                    :username "AKIAJCSUM5ZFGI7DW5PA"
                                    :passphrase "UcO9VGAaGMRuJZbgZxCiz0XuHmB1J0uvzt7WIlJK"}]]
