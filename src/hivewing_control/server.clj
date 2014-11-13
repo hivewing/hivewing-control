@@ -9,6 +9,7 @@
             [ring.middleware.basic-authentication :refer [wrap-basic-authentication]]
             [hivewing-control.authentication :refer [worker-authenticated?]]
             [hivewing-core.worker-config :as core-worker-config]
+            [clojure.data :as clojure-data]
             [clojure.string :refer [split trim lower-case]]))
 
 (defn binary?
@@ -21,7 +22,7 @@
   ([]  (create-update-message {}))
   ([parameters] {"update" parameters}))
 
-(defn- create-status-message-field
+(defn create-status-message-field
   "Create the field for a status message"
   [key-val]
   (let [[key val] key-val]
@@ -47,32 +48,67 @@
     (json/write-str message)))
 
 (defn update-worker-config
-  [worker-uuid worker-config updates]
-  worker-config
-  )
+  "Given the worker-uuid, and the updates. Apply the config changes
+  to the worker-config repo. ANd then return the current *full*
+  config hashmap"
+  [worker-uuid updates]
+  (let [worker-config (core-worker-config/worker-config-get worker-uuid)]
+    ; Incoming worker config
+    ; Set it, and the return is the complete config.
+    (core-worker-config/worker-config-set worker-uuid updates)))
+
+(defn process-status-message
+  "An incoming status message describes the state of the other
+   side's config data.  It has the keys and MD5s of all the
+   data.  We should look over that set, and find any data that we
+   think should be different (i.e. we have an md5 for it that does
+   not match the provided md5).  If that is the case, we should
+   reply with updates to the other side, for only those keys"
+  [worker-uuid status-message]
+  (let [
+        ;get the existin configuration
+        worker-config  (core-worker-config/worker-config-get worker-uuid)
+        ; Then figure out the "status", and all the fields (md5s)
+        current-status (get (create-status-message worker-config) "status")
+        ; Keys to send are the ones in status but not in the status message
+        ; so, we diff and get first, and get the keys.
+        keys-to-send   (keys (first (clojure-data/diff current-status status-message)))
+        response       (select-keys worker-config keys-to-send)]
+
+        response))
 
 (defn process-message
-  [worker-uuid [command data :as kv-pair]]
-  (let [worker-config (core-worker-config/worker-config-get worker-uuid)]
-    (case command
-      "update" (create-status-message (update-worker-config worker-uuid worker-config data)); Update the values, then reply with the status message
-      "status" {}
-      )))
+  [worker-uuid [command command-data :as kv-pair]]
+
+  (case command
+    ; When we are sent an update message.
+    ; We should update those keys which are pushed to us
+    ; And then send down a status message of all of our content.
+    ; Update the values, then reply with the status message
+    "update" (create-status-message (update-worker-config worker-uuid command-data))
+    ; When we receive a status message
+    ; We look at it, and if there are things that are not up-to-date
+    ; we will create an update message to send to the client.
+    ; if not we send a nil (which means don't send anything)
+    "status" (process-status-message worker-uuid command-data)
+    ))
 
 (defn process-messages
+  "Each message coming in needs to be processed, and then the
+   response should be created.
+   Any responses returned will be sent (even if nil, etc)
+   So we remove nil and blank messages before returning"
   [request incoming-message]
   ; Processing a message coming in.
   ; Need to process each of the messages in the incoming message body (there could be lots, but... )
   ; We look up the worker config for each
-  (let [worker-uuid   (get request :basic-authentication) ]
-    (map #(process-message worker-uuid %) incoming-message)))
-
-(process-messages {} {"update" {"temperature.temp" 90 "temperature.frequency" 1}})
+  (remove #(or (nil? %) (empty? %))
+    (let [worker-uuid   (get request :basic-authentication) ]
+      (map #(process-message worker-uuid %) incoming-message))))
 
 (defn worker-control-handler [request]
   (with-channel request channel
     (println (str "Connecting from device " (:worker-uuid (:params request))))
-    (println request)
 
     ; Upon connection we send over a single update message - empty.
     ; This prompts the recipient to reply with a status message
@@ -80,9 +116,10 @@
     (println "Sent initial blank update message")
 
     (on-close channel (fn [status] (println "channel closed: " status)))
-    (on-receive channel (fn [data] ;; echo it back
+    (on-receive channel (fn [data]
+                          (println "Data in" data)
                           (let [decoded-message (unpack-message   request data) ; Decoding the message
-                                responses        (process-messages request decoded-message)] ; Process it and get a set of replies
+                                responses       (process-messages request decoded-message)] ; Process it and get a set of replies
                             ; If the response has something to say - we send it back. Otherwise, don't.
                             (doseq [reply responses]
                               (send! channel (pack-message request reply)))))) ; Send it !
