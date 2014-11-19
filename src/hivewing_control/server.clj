@@ -52,7 +52,7 @@
   to the worker-config repo. ANd then return the current *full*
   config hashmap"
   [worker-uuid updates]
-  (let [worker-config (core-worker-config/worker-config-get worker-uuid)]
+  (let [worker-config (core-worker-config/worker-config-get worker-uuid :include-system-keys true)]
     ; Incoming worker config
     ; Set it, and the return is the complete config.
     (core-worker-config/worker-config-set worker-uuid updates)))
@@ -67,7 +67,7 @@
   [worker-uuid status-message]
   (let [
         ;get the existin configuration
-        worker-config  (core-worker-config/worker-config-get worker-uuid)
+        worker-config  (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
         ; Then figure out the "status", and all the fields (md5s)
         current-status (get (create-status-message worker-config) "status")
         ; Keys to send are the ones in status but not in the status message
@@ -109,13 +109,24 @@
 (defn worker-control-handler [request]
   (with-channel request channel
     (println (str "Connecting from device " (:worker-uuid (:params request))))
+    (let [worker-uuid   (get request :basic-authentication)
+          config-change-listener (core-worker-config/worker-config-watch-changes
+                                   worker-uuid
+                                   ; When there are changes, we just ship them out to the
+                                   ; cilent as an update message
+                                   (fn [changes]
+                                     (send! channel (pack-message request (create-update-message changes)))))]
 
     ; Upon connection we send over a single update message - empty.
     ; This prompts the recipient to reply with a status message
     (send! channel (pack-message request (create-update-message)))
     (println "Sent initial blank update message")
 
-    (on-close channel (fn [status] (println "channel closed: " status)))
+    (on-close channel (fn [status] (
+                                    println "channel closed: " status
+                                    (core-worker-config/worker-config-stop-watching-changes config-change-listener)
+                                    println "listener closed."
+                                    )))
     (on-receive channel (fn [data]
                           (println "Data in" data)
                           (let [decoded-message (unpack-message   request data) ; Decoding the message
@@ -123,7 +134,7 @@
                             ; If the response has something to say - we send it back. Otherwise, don't.
                             (doseq [reply responses]
                               (send! channel (pack-message request reply)))))) ; Send it !
-    ))
+    )))
 
 (defroutes app-routes
   (GET "/" [] worker-control-handler)
