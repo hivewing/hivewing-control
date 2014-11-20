@@ -9,6 +9,8 @@
             [ring.middleware.basic-authentication :refer [wrap-basic-authentication]]
             [hivewing-control.authentication :refer [worker-authenticated?]]
             [hivewing-core.worker-config :as core-worker-config]
+            [hivewing-core.worker-events :as core-worker-events]
+            [hivewing-core.pubsub :as core-pubsub]
             [clojure.data :as clojure-data]
             [clojure.string :refer [split trim lower-case]]))
 
@@ -16,6 +18,11 @@
   "Depending on the request parameters, we may send back JSON or MsgPack"
   [request]
   (not (get-in request [:params :json])))
+
+(defn create-events-message
+  "You create the event message.  It is really just giving it the right fields"
+  ([]  (create-events-message {}))
+  ([events] {"event" events}))
 
 (defn create-update-message
   "You create the update message.  It is really just giving it the right fields"
@@ -110,12 +117,21 @@
   (with-channel request channel
     (println (str "Connecting from device " (:worker-uuid (:params request))))
     (let [worker-uuid   (get request :basic-authentication)
-          config-change-listener (core-worker-config/worker-config-watch-changes
-                                   worker-uuid
-                                   ; When there are changes, we just ship them out to the
-                                   ; cilent as an update message
+          worker-change-listener (core-pubsub/subscribe-message
+                                   ; This is the worker config updates channel handler
+                                   (core-worker-config/worker-config-updates-channel worker-uuid)
                                    (fn [changes]
-                                     (send! channel (pack-message request (create-update-message changes)))))]
+                                      ; When there are changes, we just ship them out to the
+                                      ; cilent as an update message
+                                      (send! channel (pack-message request (create-update-message changes))))
+
+                                   ; This is the channel that events are pushed to the workers
+                                   (core-worker-events/worker-events-channel worker-uuid)
+                                   (fn [events]
+                                      ; When there are events, we just ship them out to the
+                                      ; cilent as an event message
+                                      (send! channel (pack-message request (create-events-message events))))
+                                   )]
 
     ; Upon connection we send over a single update message - empty.
     ; This prompts the recipient to reply with a status message
@@ -124,11 +140,10 @@
 
     (on-close channel (fn [status] (
                                     println "channel closed: " status
-                                    (core-worker-config/worker-config-stop-watching-changes config-change-listener)
+                                    (core-pubsub/unsubscribe worker-change-listener)
                                     println "listener closed."
                                     )))
     (on-receive channel (fn [data]
-                          (println "Data in" data)
                           (let [decoded-message (unpack-message   request data) ; Decoding the message
                                 responses       (process-messages request decoded-message)] ; Process it and get a set of replies
                             ; If the response has something to say - we send it back. Otherwise, don't.
