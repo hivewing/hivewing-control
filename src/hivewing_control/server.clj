@@ -10,6 +10,7 @@
             [hivewing-control.authentication :refer [worker-authenticated?]]
             [hivewing-core.worker-config :as core-worker-config]
             [hivewing-core.worker-events :as core-worker-events]
+            [hivewing-core.worker-data :as core-worker-data]
             [hivewing-core.pubsub :as core-pubsub]
             [clojure.data :as clojure-data]
             [clojure.string :refer [split trim lower-case]]))
@@ -81,8 +82,12 @@
         ; so, we diff and get first, and get the keys.
         keys-to-send   (keys (first (clojure-data/diff current-status status-message)))
         response       (select-keys worker-config keys-to-send)]
-
         response))
+
+(defn process-data-message
+  "The worker has passed us a data value and we should store it"
+  [worker-uuid data-hash]
+  (core-worker-data/worker-data-set worker-uuid (flatten (into [] data-hash))))
 
 (defn process-message
   [worker-uuid [command command-data :as kv-pair]]
@@ -98,6 +103,8 @@
     ; we will create an update message to send to the client.
     ; if not we send a nil (which means don't send anything)
     "status" (process-status-message worker-uuid command-data)
+    ; When we get data from the worker we store it.
+    "data" (process-data-message worker-uuid command-data)
     ))
 
 (defn process-messages
@@ -120,14 +127,14 @@
           worker-change-listener (core-pubsub/subscribe-message
                                    ; This is the worker config updates channel handler
                                    (core-worker-config/worker-config-updates-channel worker-uuid)
-                                   (fn [changes]
+                                   (fn [changes channel]
                                       ; When there are changes, we just ship them out to the
                                       ; cilent as an update message
                                       (send! channel (pack-message request (create-update-message changes))))
 
                                    ; This is the channel that events are pushed to the workers
                                    (core-worker-events/worker-events-channel worker-uuid)
-                                   (fn [events]
+                                   (fn [events channel]
                                       ; When there are events, we just ship them out to the
                                       ; cilent as an event message
                                       (send! channel (pack-message request (create-events-message events))))
