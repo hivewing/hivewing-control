@@ -101,7 +101,7 @@
                ; Update it
                (update-worker-config worker-uuid command-data)
                ; Now get all the config!
-               (create-status-message worker-uuid (core-worker-config/worker-config-get worker-uuid :include-system-keys true)))
+               (create-status-message (core-worker-config/worker-config-get worker-uuid :include-system-keys true)))
     ; When we receive a status message
     ; We look at it, and if there are things that are not up-to-date
     ; we will create an update message to send to the client.
