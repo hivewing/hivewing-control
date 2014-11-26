@@ -39,7 +39,7 @@
 (defn create-status-message
   "Creates a status message for the client.  This is in a hash-map form"
   [config-keys]
-  {"status" (into {} (map create-status-message-field  config-keys))})
+  {"status" (into {} (map create-status-message-field config-keys))})
 
 (defn unpack-message
   "Unpacks a message with the correct style of encoding (depending on the request)"
@@ -97,7 +97,11 @@
     ; We should update those keys which are pushed to us
     ; And then send down a status message of all of our content.
     ; Update the values, then reply with the status message
-    "update" (create-status-message (update-worker-config worker-uuid command-data))
+    "update" (doall
+               ; Update it
+               (update-worker-config worker-uuid command-data)
+               ; Now get all the config!
+               (create-status-message worker-uuid (core-worker-config/worker-config-get worker-uuid :include-system-keys true)))
     ; When we receive a status message
     ; We look at it, and if there are things that are not up-to-date
     ; we will create an update message to send to the client.
