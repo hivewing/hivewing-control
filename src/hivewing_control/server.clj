@@ -131,14 +131,14 @@
           worker-change-listener (core-pubsub/subscribe-message
                                    ; This is the worker config updates channel handler
                                    (core-worker-config/worker-config-updates-channel worker-uuid)
-                                   (fn [channel changes]
+                                   (fn [chan-string changes]
                                       ; When there are changes, we just ship them out to the
                                       ; cilent as an update message
                                       (send! channel (pack-message request (create-update-message changes))))
 
                                    ; This is the channel that events are pushed to the workers
                                    (core-worker-events/worker-events-channel worker-uuid)
-                                   (fn [channel events]
+                                   (fn [chan-string events]
                                       ; When there are events, we just ship them out to the
                                       ; cilent as an event message
                                       (send! channel (pack-message request (create-events-message events))))
