@@ -87,7 +87,7 @@
 (defn process-data-message
   "The worker has passed us a data value and we should store it"
   [worker-uuid data-hash]
-  (core-worker-data/worker-data-set worker-uuid (flatten (into [] data-hash))))
+  (core-worker-data/worker-data-store worker-uuid (flatten (into [] data-hash))))
 
 (defn process-message
   [worker-uuid [command command-data :as kv-pair]]
