@@ -97,7 +97,7 @@
     ; We should update those keys which are pushed to us
     ; And then send down a status message of all of our content.
     ; Update the values, then reply with the status message
-    "update" (doall
+    "update" (do
                ; Update it
                (update-worker-config worker-uuid command-data)
                ; Now get all the config!
