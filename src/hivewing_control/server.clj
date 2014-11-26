@@ -63,7 +63,7 @@
   (let [worker-config (core-worker-config/worker-config-get worker-uuid :include-system-keys true)]
     ; Incoming worker config
     ; Set it, and the return is the complete config.
-    (core-worker-config/worker-config-set worker-uuid updates)))
+    (core-worker-config/worker-config-set worker-uuid updates :suppress-change-publication true)))
 
 (defn process-status-message
   "An incoming status message describes the state of the other
