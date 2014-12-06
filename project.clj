@@ -20,9 +20,10 @@
                                    :username "AKIAJCSUM5ZFGI7DW5PA"
                                    :passphrase "UcO9VGAaGMRuJZbgZxCiz0XuHmB1J0uvzt7WIlJK"}]]
 
+  :aot [hivewing-control.core]
   :main hivewing-control.core
-  :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}})
+  )
+  ;:target-path "target/%s"
   ;   :hivewing-redis-uri "redis://127.0.0.1:3900/"
   ;   :hivewing-aws-access-key "123abc",
   ;   :hivewing-aws-secret-key "123abc",
