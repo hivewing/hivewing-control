@@ -12,3 +12,4 @@
 test/aws_local/ddb/data/*
 .nrepl-port
 profiles.clj
+/checkouts/
