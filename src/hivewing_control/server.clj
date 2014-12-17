@@ -36,10 +36,14 @@
   (let [[key val] key-val]
     [key (digest/md5 val)]))
 
+
 (defn create-status-message
   "Creates a status message for the client.  This is in a hash-map form"
   [config-keys]
-  {"status" (into {} (map create-status-message-field config-keys))})
+  (let [skeys (sort-by name (keys config-keys))
+        kvs (map #(list  %1 (config-keys %1)) skeys)
+        ins (reduce concat () kvs)]
+    {"status" (digest/sha-256 (map #(byte-array (map byte (name %1))) ins))}))
 
 (defn unpack-message
   "Unpacks a message with the correct style of encoding (depending on the request)"
@@ -66,23 +70,18 @@
     (core-worker-config/worker-config-set worker-uuid updates :suppress-change-publication true)))
 
 (defn process-status-message
-  "An incoming status message describes the state of the other
-   side's config data.  It has the keys and MD5s of all the
-   data.  We should look over that set, and find any data that we
-   think should be different (i.e. we have an md5 for it that does
-   not match the provided md5).  If that is the case, we should
-   reply with updates to the other side, for only those keys"
+  "An incoming status message describes the state of the other side's config data.
+  It has single sha-256 of all the config data. Returns either the entire config
+  if status does not match or an empty hash if the status is up-to-date."
   [worker-uuid status-message]
   (let [
         ;get the existin configuration
         worker-config  (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
-        ; Then figure out the "status", and all the fields (md5s)
-        current-status (get (create-status-message worker-config) "status")
-        ; Keys to send are the ones in status but not in the status message
-        ; so, we diff and get first, and get the keys.
-        keys-to-send   (keys (first (clojure-data/diff current-status status-message)))
-        response       (select-keys worker-config keys-to-send)]
-        response))
+        ; Then figure out the "status"
+        current-status (get (create-status-message worker-config) "status")]
+    (if (= current-status status-message)
+      {}
+      {"set" worker-config})))
 
 (defn process-data-message
   "The worker has passed us a data value and we should store it"
