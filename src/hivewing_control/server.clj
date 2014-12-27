@@ -43,7 +43,7 @@
   (let [skeys (sort-by name (keys config-keys))
         kvs (map #(list  %1 (config-keys %1)) skeys)
         ins (reduce concat () kvs)]
-    {"status" (digest/sha-256 (map #(byte-array (map byte (name %1))) ins))}))
+    {"status" {"hash" (digest/sha-256 (map #(byte-array (map byte (name %1))) ins))}}))
 
 (defn unpack-message
   "Unpacks a message with the correct style of encoding (depending on the request)"
@@ -73,42 +73,54 @@
   "An incoming status message describes the state of the other side's config data.
   It has single sha-256 of all the config data. Returns either the entire config
   if status does not match or an empty hash if the status is up-to-date."
-  [worker-uuid status-message]
+  [worker-uuid {worker-status "hash"}]
   (let [
         ;get the existin configuration
         worker-config  (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
         ; Then figure out the "status"
-        current-status (get (create-status-message worker-config) "status")]
-    (if (= current-status status-message)
+        current-status (get-in (create-status-message worker-config) ["status" "hash"])]
+    (if (= current-status worker-status)
       {}
       {"set" worker-config})))
 
 (defn process-data-message
   "The worker has passed us a data value and we should store it"
   [worker-uuid data-hash]
-  (core-worker-data/worker-data-store worker-uuid (flatten (into [] data-hash))))
+  (core-worker-data/worker-data-store worker-uuid (flatten (into [] data-hash)))
+  ;; return an empty collection
+  ())
+
+(defn process-event-message [worker-uuid event-hash]
+  (println "handle event" event-hash)
+  ())
 
 (defn process-message
   [worker-uuid [command command-data :as kv-pair]]
 
-  (case command
-    ; When we are sent an update message.
-    ; We should update those keys which are pushed to us
-    ; And then send down a status message of all of our content.
-    ; Update the values, then reply with the status message
-    "update" (do
-               ; Update it
-               (update-worker-config worker-uuid command-data)
-               ; Now get all the config!
-               (create-status-message (core-worker-config/worker-config-get worker-uuid :include-system-keys true)))
-    ; When we receive a status message
-    ; We look at it, and if there are things that are not up-to-date
-    ; we will create an update message to send to the client.
-    ; if not we send a nil (which means don't send anything)
-    "status" (process-status-message worker-uuid command-data)
-    ; When we get data from the worker we store it.
-    "data" (process-data-message worker-uuid command-data)
-    ))
+  (let [res (case command
+              ;; When we are sent an update message.
+              ;; We should update those keys which are pushed to us
+              ;; And then send down a status message of all of our content.
+              ;; Update the values, then reply with the status message
+              "update" (do
+                         ;; Update it
+                         (update-worker-config worker-uuid command-data)
+                         ;; Now get all the config!
+                         (create-status-message (core-worker-config/worker-config-get worker-uuid
+                                                                                      :include-system-keys true)))
+              ;; When we receive a status message
+              ;; We look at it, and if there are things that are not up-to-date
+              ;; we will create an update message to send to the client.
+              ;; if not we send a nil (which means don't send anything)
+              "status" (process-status-message worker-uuid command-data)
+              ;; When we get data from the worker we store it.
+              "data" (process-data-message worker-uuid command-data)
+              "event" (process-event-message worker-uuid command-data)
+              nil
+              )]
+    (cond (nil? res) (println "unknown command:" command)
+          (seq res) (println "process-message result:" command res))
+    res))
 
 (defn process-messages
   "Each message coming in needs to be processed, and then the
