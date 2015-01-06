@@ -5,6 +5,6 @@
 
 (defn -main
   [& args]
-  (let [port 4000]
+  (let [port 6000]
     (println (str "Starting up on port: " port))
     (run-server app {:port port})))

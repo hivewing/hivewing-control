@@ -1,6 +1,7 @@
 (ns hivewing-control.server
   (:require [compojure.core :refer :all]
             [compojure.route :as route]
+            [taoensso.timbre :as logger]
             [compojure.handler :as handler]
             [digest :as digest]
             [msgpack.core :as msgpack]
@@ -8,9 +9,11 @@
             [org.httpkit.server :refer :all]
             [ring.middleware.basic-authentication :refer [wrap-basic-authentication]]
             [hivewing-control.authentication :refer [worker-authenticated?]]
+            [hivewing-core.worker :as core-worker]
             [hivewing-core.worker-config :as core-worker-config]
             [hivewing-core.worker-events :as core-worker-events]
             [hivewing-core.worker-data :as core-worker-data]
+            [hivewing-core.hive-logs :as core-hive-logs]
             [hivewing-core.pubsub :as core-pubsub]
             [clojure.data :as clojure-data]
             [clojure.string :refer [split trim lower-case]]))
@@ -42,8 +45,10 @@
   [config-keys]
   (let [skeys (sort-by name (keys config-keys))
         kvs (map #(list  %1 (config-keys %1)) skeys)
-        ins (reduce concat () kvs)]
-    {"status" {"hash" (digest/sha-256 (map #(byte-array (map byte (name %1))) ins))}}))
+        ins (reduce concat () kvs)
+        sha-str (map #(byte-array (map byte (name %1))) ins)]
+    (logger/info "Calculating status hash for " skeys)
+    {"status" {"hash" (digest/sha-256 sha-str)}}))
 
 (defn unpack-message
   "Unpacks a message with the correct style of encoding (depending on the request)"
@@ -64,10 +69,15 @@
   to the worker-config repo. ANd then return the current *full*
   config hashmap"
   [worker-uuid updates]
-  (let [worker-config (core-worker-config/worker-config-get worker-uuid :include-system-keys true)]
-    ; Incoming worker config
-    ; Set it, and the return is the complete config.
-    (core-worker-config/worker-config-set worker-uuid updates :suppress-change-publication true)))
+  ; Incoming worker config
+  ; Set it, and the return is the complete config.
+  (do
+    (logger/info "Updating worker config: " worker-uuid updates)
+    (core-worker-config/worker-config-set worker-uuid updates :suppress-change-publication true :allow-system-keys true)
+    (let [new-config (core-worker-config/worker-config-get worker-uuid :include-system-keys true)]
+      (logger/info "Updated to worker config: " worker-uuid new-config)
+      new-config)))
+
 
 (defn process-status-message
   "An incoming status message describes the state of the other side's config data.
@@ -79,6 +89,7 @@
         worker-config  (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
         ; Then figure out the "status"
         current-status (get-in (create-status-message worker-config) ["status" "hash"])]
+    (logger/info "Processing status... Worker: " worker-status " ? " current-status)
     (if (= current-status worker-status)
       {}
       {"set" worker-config})))
@@ -90,37 +101,53 @@
   ;; return an empty collection
   ())
 
-(defn process-event-message [worker-uuid event-hash]
-  (println "handle event" event-hash)
-  ())
+(defn process-log-message
+  "The worker sent up some log data. Save it!
+  The format is { 'task' => <log message> }
+  If you send a blank task name, it is a 'system' task."
+  [hive-uuid worker-uuid command-data]
+    (doseq [[task-name message] command-data]
+      (core-hive-logs/hive-logs-push hive-uuid
+                                     worker-uuid
+                                     (if (empty? task-name) nil task-name)
+                                     message))
+    ;; Return an empty collection
+    ())
 
 (defn process-message
-  [worker-uuid [command command-data :as kv-pair]]
+  [request [command command-data :as kv-pair]]
 
-  (let [res (case command
-              ;; When we are sent an update message.
-              ;; We should update those keys which are pushed to us
-              ;; And then send down a status message of all of our content.
-              ;; Update the values, then reply with the status message
-              "update" (do
-                         ;; Update it
-                         (update-worker-config worker-uuid command-data)
-                         ;; Now get all the config!
-                         (create-status-message (core-worker-config/worker-config-get worker-uuid
-                                                                                      :include-system-keys true)))
-              ;; When we receive a status message
-              ;; We look at it, and if there are things that are not up-to-date
-              ;; we will create an update message to send to the client.
-              ;; if not we send a nil (which means don't send anything)
-              "status" (process-status-message worker-uuid command-data)
-              ;; When we get data from the worker we store it.
-              "data" (process-data-message worker-uuid command-data)
-              "event" (process-event-message worker-uuid command-data)
-              nil
-              )]
-    (cond (nil? res) (println "unknown command:" command)
-          (seq res) (println "process-message result:" command res))
-    res))
+  (let [auth  (get request :basic-authentication)
+        worker-uuid   (:uuid auth)
+        hive-uuid     (:hive-uuid auth)]
+    (try
+      (let [res (case command
+                  ;; When we are sent an update message.
+                  ;; We should update those keys which are pushed to us
+                  ;; And then send down a status message of all of our content.
+                  ;; Update the values, then reply with the status message
+                  "update" (do
+                             ;; Update it
+                             (update-worker-config worker-uuid command-data)
+                             ;; Now get all the config!
+                             (create-status-message (core-worker-config/worker-config-get worker-uuid)))
+                  ;; When we receive a status message
+                  ;; We look at it, and if there are things that are not up-to-date
+                  ;; we will create an update message to send to the client.
+                  ;; if not we send a nil (which means don't send anything)
+                  "status" (process-status-message worker-uuid command-data)
+
+                  ;; When we get data from the worker we store it.
+                  "data" (process-data-message worker-uuid command-data)
+
+                  "log" (process-log-message hive-uuid worker-uuid command-data)
+                  nil
+                  )]
+
+        (cond (nil? res) (logger/warn "unknown command:" command)
+              (seq res) (logger/info "process-message result:" command res))
+        res)
+      (catch Exception e (logger/error (str "Exception: " e))))))
 
 (defn process-messages
   "Each message coming in needs to be processed, and then the
@@ -132,13 +159,13 @@
   ; Need to process each of the messages in the incoming message body (there could be lots, but... )
   ; We look up the worker config for each
   (remove #(or (nil? %) (empty? %))
-    (let [worker-uuid   (get request :basic-authentication) ]
-      (map #(process-message worker-uuid %) incoming-message))))
+      (map #(process-message request %) incoming-message)))
 
 (defn worker-control-handler [request]
   (with-channel request channel
     (println (str "Connecting from device " (:worker-uuid (:params request))))
-    (let [worker-uuid   (get request :basic-authentication)
+    (let [worker-uuid   (:uuid (get request :basic-authentication))
+
           worker-change-listener (core-pubsub/subscribe-message
                                    ; This is the worker config updates channel handler
                                    (core-worker-config/worker-config-updates-channel worker-uuid)
