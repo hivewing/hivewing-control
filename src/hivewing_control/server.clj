@@ -43,6 +43,7 @@
 (defn create-status-message
   "Creates a status message for the client.  This is in a hash-map form"
   [config-keys]
+  (logger/info "Config status message calc - config-keys" config-keys)
   (let [skeys (sort-by name (keys config-keys))
         kvs (map #(list  %1 (config-keys %1)) skeys)
         ins (reduce concat () kvs)
@@ -107,6 +108,8 @@
   If you send a blank task name, it is a 'system' task."
   [hive-uuid worker-uuid command-data]
     (doseq [[task-name message] command-data]
+      (logger/info "Storing log message from worker " worker-uuid)
+      (logger/info "task: " task-name " message " message)
       (core-hive-logs/hive-logs-push hive-uuid
                                      worker-uuid
                                      (if (empty? task-name) nil task-name)
@@ -119,7 +122,7 @@
 
   (let [auth  (get request :basic-authentication)
         worker-uuid   (:uuid auth)
-        hive-uuid     (:hive-uuid auth)]
+        hive-uuid     (:hive_uuid auth)]
     (try
       (let [res (case command
                   ;; When we are sent an update message.
@@ -163,8 +166,8 @@
 
 (defn worker-control-handler [request]
   (with-channel request channel
-    (println (str "Connecting from device " (:worker-uuid (:params request))))
     (let [worker-uuid   (:uuid (get request :basic-authentication))
+          hive-uuid     (:hive_uuid (get request :basic-authentication))
 
           worker-change-listener (core-pubsub/subscribe-message
                                    ; This is the worker config updates channel handler
@@ -182,15 +185,18 @@
                                       (send! channel (pack-message request (create-events-message events))))
                                    )]
 
+    (core-hive-logs/hive-logs-push hive-uuid worker-uuid nil "Connected to control server")
+
+    (logger/info (str "Connecting from device " (:worker-uuid (:params request))))
     ; Upon connection we send over a single update message - empty.
     ; This prompts the recipient to reply with a status message
     (send! channel (pack-message request (create-update-message)))
-    (println "Sent initial blank update message")
+    (logger/info "Sent initial blank update message")
 
-    (on-close channel (fn [status] (
-                                    println "channel closed: " status
+    (on-close channel (fn [status] (do
+                                    (logger/info "channel closed: " status)
                                     (core-pubsub/unsubscribe worker-change-listener)
-                                    println "listener closed."
+                                    (logger/info "listener closed.")
                                     )))
     (on-receive channel (fn [data]
                           (let [decoded-message (unpack-message   request data) ; Decoding the message
