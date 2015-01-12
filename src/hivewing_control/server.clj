@@ -12,7 +12,7 @@
             [hivewing-core.worker :as core-worker]
             [hivewing-core.worker-config :as core-worker-config]
             [hivewing-core.worker-events :as core-worker-events]
-            [hivewing-core.worker-data :as core-worker-data]
+            [hivewing-core.hive-data :as hive-data]
             [hivewing-core.hive-logs :as core-hive-logs]
             [hivewing-core.pubsub :as core-pubsub]
             [clojure.data :as clojure-data]
@@ -97,8 +97,8 @@
 
 (defn process-data-message
   "The worker has passed us a data value and we should store it"
-  [worker-uuid data-hash]
-  (core-worker-data/worker-data-store worker-uuid (flatten (into [] data-hash)))
+  [hive-uuid worker-uuid data-hash]
+  (hive-data/hive-data-push hive-uuid worker-uuid (flatten (into [] data-hash)))
   ;; return an empty collection
   ())
 
@@ -134,6 +134,7 @@
                              (update-worker-config worker-uuid command-data)
                              ;; Now get all the config!
                              (create-status-message (core-worker-config/worker-config-get worker-uuid)))
+
                   ;; When we receive a status message
                   ;; We look at it, and if there are things that are not up-to-date
                   ;; we will create an update message to send to the client.
@@ -141,9 +142,10 @@
                   "status" (process-status-message worker-uuid command-data)
 
                   ;; When we get data from the worker we store it.
-                  "data" (process-data-message worker-uuid command-data)
+                  "data" (process-data-message hive-uuid worker-uuid command-data)
 
                   "log" (process-log-message hive-uuid worker-uuid command-data)
+
                   nil
                   )]
 
