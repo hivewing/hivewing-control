@@ -187,6 +187,8 @@
                                       (send! channel (pack-message request (create-events-message events))))
                                    )]
 
+    (core-worker/worker-connected! worker-uuid)
+    (core-worker/worker-flag-seen! worker-uuid)
     (core-hive-logs/hive-logs-push hive-uuid worker-uuid nil "Connected to control server")
 
     (logger/info (str "Connecting from device " (:worker-uuid (:params request))))
@@ -196,6 +198,7 @@
     (logger/info "Sent initial blank update message")
 
     (on-close channel (fn [status] (do
+                                    (core-worker/worker-disconnected! worker-uuid)
                                     (logger/info "channel closed: " status)
                                     (core-pubsub/unsubscribe worker-change-listener)
                                     (logger/info "listener closed.")
