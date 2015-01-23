@@ -2,7 +2,7 @@
   :description "Hivewing Control server."
   :url "http://control.hivewing.io"
   :dependencies [
-                 [org.clojure/clojure "1.6.0"]
+                 [org.clojure/clojure "1.7.0-alpha5"]
                  [compojure "1.2.1"]
                  [environ "1.0.0"]
                  [hivewing-core "0.1.3-SNAPSHOT"]
@@ -12,7 +12,6 @@
                  [javax.servlet/servlet-api "2.5"]
                  [ring/ring-core "1.3.1"]
                  [ring-basic-authentication "1.0.5"]
-                 [org.clojure/data.json "0.2.5"]
                  ]
 
   :plugins [[s3-wagon-private "1.1.2"]
