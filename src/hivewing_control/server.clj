@@ -9,11 +9,15 @@
             [org.httpkit.server :refer :all]
             [ring.middleware.basic-authentication :refer [wrap-basic-authentication]]
             [hivewing-control.authentication :refer [worker-authenticated?]]
+            [hivewing-control.config :as config]
             [hivewing-core.worker :as core-worker]
             [hivewing-core.worker-config :as core-worker-config]
             [hivewing-core.worker-events :as core-worker-events]
+            [hivewing-core.public-keys :as core-public-keys]
+            [hivewing-core.public-keys-notification :as core-public-keys-notification]
             [hivewing-core.hive-data :as hive-data]
             [hivewing-core.hive-logs :as core-hive-logs]
+            [hivewing-core.hive-manager :as hive-manager]
             [hivewing-core.pubsub :as core-pubsub]
             [clojure.data :as clojure-data]
             [clojure.string :refer [split trim lower-case]]))
@@ -65,6 +69,30 @@
     (msgpack/pack message)
     (json/write-str message)))
 
+(defn get-beekeeper-public-keys-hash
+  "Get the beekeeper public-keys hash for sending in an update message"
+  [hive-uuid]
+  (let [beekeeper-public-keys (clojure.string/join "\n" (map :key (hive-manager/hive-managers-get-public-keys hive-uuid)))]
+        (hash-map core-worker-config/beekeeper-public-keys-key beekeeper-public-keys)))
+
+(defn get-composite-worker-config
+  "Get the worker config message, which is a composite (we add a few static fields into it)"
+  [hive-uuid worker-uuid]
+  (let [beekeeper-public-keys (clojure.string/join "\n" (map :key (hive-manager/hive-managers-get-public-keys hive-uuid)))]
+    (merge (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
+        (get-beekeeper-public-keys-hash hive-uuid)
+        {core-worker-config/worker-uuid-key worker-uuid}
+        {core-worker-config/porter-hosts-key (config/porter-hosts)})))
+
+(defn exclude-composite-worker-config-keys
+  "We added some keys to the outgoing status, we should remove them on input."
+  [worker-config]
+    (dissoc worker-config
+            hash-map core-worker-config/beekeeper-public-keys-key
+            core-worker-config/worker-uuid-key
+            core-worker-config/porter-hosts-key))
+
+
 (defn update-worker-config
   "Given the worker-uuid, and the updates. Apply the config changes
   to the worker-config repo. ANd then return the current *full*
@@ -72,22 +100,22 @@
   [worker-uuid updates]
   ; Incoming worker config
   ; Set it, and the return is the complete config.
-  (do
-    (logger/info "Updating worker config: " worker-uuid updates)
-    (core-worker-config/worker-config-set worker-uuid updates :suppress-change-publication true :allow-system-keys true)
-    (let [new-config (core-worker-config/worker-config-get worker-uuid :include-system-keys true)]
-      (logger/info "Updated to worker config: " worker-uuid new-config)
-      new-config)))
-
+  (let [clean-updates (exclude-composite-worker-config-keys updates)]
+    (do
+      (logger/info "Updating worker config: " worker-uuid clean-updates)
+      (core-worker-config/worker-config-set worker-uuid clean-updates :suppress-change-publication true :allow-system-keys true)
+      (let [new-config (get-composite-worker-config worker-uuid)]
+        (logger/info "Updated to worker config: " worker-uuid new-config)
+        new-config)))
 
 (defn process-status-message
   "An incoming status message describes the state of the other side's config data.
   It has single sha-256 of all the config data. Returns either the entire config
   if status does not match or an empty hash if the status is up-to-date."
-  [worker-uuid {worker-status "hash"}]
+  [hive-uuid worker-uuid {worker-status "hash"}]
   (let [
         ;get the existin configuration
-        worker-config  (core-worker-config/worker-config-get worker-uuid :include-system-keys true)
+        worker-config (get-composite-worker-config hive-uuid worker-uuid)
         ; Then figure out the "status"
         current-status (get-in (create-status-message worker-config) ["status" "hash"])]
     (logger/info "Processing status... Worker: " worker-status " ? " current-status)
@@ -130,20 +158,19 @@
                   ;; And then send down a status message of all of our content.
                   ;; Update the values, then reply with the status message
                   "update" (do
-                             ;; Update it
-                             (update-worker-config worker-uuid command-data)
-                             ;; Now get all the config!
-                             (create-status-message (core-worker-config/worker-config-get worker-uuid)))
+                             ;; Update it and then send the resulting status message
+                             (create-status-message (update-worker-config worker-uuid command-data)))
 
                   ;; When we receive a status message
                   ;; We look at it, and if there are things that are not up-to-date
                   ;; we will create an update message to send to the client.
                   ;; if not we send a nil (which means don't send anything)
-                  "status" (process-status-message worker-uuid command-data)
+                  "status" (process-status-message hive-uuid worker-uuid command-data)
 
                   ;; When we get data from the worker we store it.
                   "data" (process-data-message hive-uuid worker-uuid command-data)
 
+                  ;; Logs coming in are stored
                   "log" (process-log-message hive-uuid worker-uuid command-data)
 
                   nil
@@ -178,6 +205,12 @@
                                       ; When there are changes, we just ship them out to the
                                       ; cilent as an update message
                                       (send! channel (pack-message request (create-update-message changes))))
+
+                                   ;; This occurs when the public keys for any beekeeper is created or deleted.
+                                   ;; The data needs to be sent to the worker.
+                                   (core-public-key-notification/public-keys-hive-updated-channel hive-uuid)
+                                   (fn [chan-string ignored]
+                                        (send! channel (pack-message request (create-update-message (get-beekeeper-public-keys-hash hive-uuid)))))
 
                                    ; This is the channel that events are pushed to the workers
                                    (core-worker-events/worker-events-channel worker-uuid)
